@@ -1,18 +1,32 @@
 """Create a ChatVectorDBChain for question/answering."""
-from langchain.callbacks.base import AsyncCallbackManager
+import logging
+from langchain.callbacks.manager import AsyncCallbackManager
 from langchain.callbacks.tracers import LangChainTracer
-from langchain.chains import ChatVectorDBChain
+from langchain.chains import ConversationalRetrievalChain
 from langchain.chains.chat_vector_db.prompts import (CONDENSE_QUESTION_PROMPT,
                                                      QA_PROMPT)
 from langchain.chains.llm import LLMChain
 from langchain.chains.question_answering import load_qa_chain
 from langchain.llms import OpenAI
+from langchain.memory import ConversationBufferMemory
 from langchain.vectorstores.base import VectorStore
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler("log_file.log"),
+        logging.StreamHandler()
+    ]
+)
 
 def get_chain(
     vectorstore: VectorStore, question_handler, stream_handler, tracing: bool = False
-) -> ChatVectorDBChain:
+) -> ConversationalRetrievalChain:
     """Create a ChatVectorDBChain for question/answering."""
     # Construct a ChatVectorDBChain with a streaming llm for combine docs
     # and a separate, non-streaming llm for question generation
@@ -45,10 +59,15 @@ def get_chain(
         streaming_llm, chain_type="stuff", prompt=QA_PROMPT, callback_manager=manager
     )
 
-    qa = ChatVectorDBChain(
-        vectorstore=vectorstore,
+    memory = ConversationBufferMemory(
+        memory_key='chat_history', return_messages=True, output_key='answer')
+
+    qa = ConversationalRetrievalChain(
+        retriever=vectorstore.as_retriever(),
+        memory=memory,
         combine_docs_chain=doc_chain,
         question_generator=question_generator,
         callback_manager=manager,
+        return_source_documents=True
     )
     return qa
